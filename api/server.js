@@ -1,40 +1,41 @@
-const router = require('express').Router();
-const bcrypt = require("bcryptjs")
-const users = require("../users/users-model")
+const express = require('express');
+const cors = require('cors');
+const helmet = require('helmet');
+const session =  require("express-session")
+const KnexSessionStore = require("connect-session-knex")(session)
 
+const authenticate = require('../auth/authenticate-middleware.js');
+const authRouter = require('../auth/auth-router.js');
+const jokesRouter = require('../jokes/jokes-router.js');
+const dbConfig = require("../database/dbConfig")
 
-router.post('/register', async (req, res, next) => {
-  try {
-    const {username} = req.body
-    const user = await users.findBy({username}).first()
+const server = express();
 
-    if(user){
-        return res.status(409).json({
-            message: "username already taken"
-        })
-    }
-    res.status(201).json(await users.add(req.body))
-}catch(err){
-    next(err)
-}
-});
-
-router.post('/login', (req, res) => {
-  let { username, password } = req.body;
-  users.findBy({ username })
-    .first()
-    .then(user => {
-      if (user && bcrypt.compare(password, user.password)) {
-        console.log(req.session)
-        req.session.user = user;
-        res.status(200).json({ message: `Welcome back ${user.username}!` });
-      } else {
-        res.status(401).json({ message: "Invalid Credentials" });
-      }
+server.use(helmet());
+server.use(cors());
+server.use(express.json());
+server.use(session({
+    name:"token",
+    resave:false,
+    saveUninitialized:false,
+    secret: process.env.COOKIE_SECRET || "secret",
+    cookie: {
+        httpOnly: true
+    },
+    store: new KnexSessionStore({
+        knex: dbConfig,
+        createTable: true
     })
-    .catch(error => {
-      res.status(500).json(error);
-    });
-});
+}))
 
-module.exports = router;
+server.use('/api/auth', authRouter);
+server.use('/api/jokes', authenticate, jokesRouter);
+
+server.use((err, req, res, next) => {
+    console.log(err)
+    res.status(500).json({
+        message: "ERROR ERROR"
+    })
+})
+
+module.exports = server;
